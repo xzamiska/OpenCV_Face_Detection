@@ -1,8 +1,21 @@
 from dataclasses import dataclass
 import cv2
 from mtcnn import MTCNN
-import numpy
 
+# global glob_deep_tp
+# global glob_deep_fp
+# global glob_deep_fn
+#
+# global glob_viola_tp
+# global glob_viola_fp
+# global glob_viola_fn
+glob_deep_tp = 0
+glob_deep_fp = 0
+glob_deep_fn = 0
+
+glob_viola_tp = 0
+glob_viola_fp = 0
+glob_viola_fn = 0
 
 @dataclass
 class Face:
@@ -64,9 +77,11 @@ def calc_predicsion_and_recall(scores, annot, isViola):
         cv2.putText(frame, "VIOLA - Precision: {:.2f}".format(Precision) + " Recall: {:.2f}".format(Recall), (10, 55),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (98, 24, 159), 2)
 
+    return tp, fp, fn
 
 
 def find_face_DEEP(frame, faces, with_score, annot):
+    global glob_deep_tp, glob_deep_fp, glob_deep_fn
     scores = []
     found_ind = []
     founded_arr = []
@@ -90,11 +105,15 @@ def find_face_DEEP(frame, faces, with_score, annot):
                     for ind in range(len(founded_arr)):
                         founded_arr[ind] = founded_arr[ind] | found_ind[ind]
     if with_score:
-        calc_predicsion_and_recall(scores, annot, False)
+        TP, FP, FN = calc_predicsion_and_recall(scores, annot, False)
+        glob_deep_tp += TP
+        glob_deep_fp += FP
+        glob_deep_fn += FN
     return frame, founded_arr
 
 
 def find_face_viola(frame, faces, with_score, annot):
+    global glob_viola_tp, glob_viola_fp, glob_viola_fn
     scores = []
     found_ind = []
     founded_arr = []
@@ -116,7 +135,10 @@ def find_face_viola(frame, faces, with_score, annot):
         else:
             frame_copy[y:y + h, x:x + w] = frame[y:y + h, x:x + w]
     if with_score:
-        calc_predicsion_and_recall(scores, annot, True)
+        TP, FP, FN = calc_predicsion_and_recall(scores, annot, True)
+        glob_viola_tp += TP
+        glob_viola_fp += FP
+        glob_viola_fn += FN
     return frame_copy, founded_arr
 
 
@@ -138,6 +160,13 @@ def read_data():
 
 
 annot_data = read_data()
+# glob_deep_tp = 0
+# glob_deep_fp = 0
+# glob_deep_fn = 0
+#
+# glob_viola_tp = 0
+# glob_viola_fp = 0
+# glob_viola_fn = 0
 if __name__ == '__main__':
     face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
     video = cv2.VideoCapture(0, cv2.CAP_DSHOW)
@@ -148,15 +177,10 @@ if __name__ == '__main__':
             break
 
         check, frame_cam = video.read()
-
         result = detector.detect_faces(frame_cam)
         deep_faces, found_deep = find_face_DEEP(frame_cam, result, False, {})
-
         faces = face_cascade.detectMultiScale(frame_cam, scaleFactor=1.1, minNeighbors=5)
         viola_faces, found_viola = find_face_viola(frame_cam, faces, False, {})
-
-
-
         cv2.imshow('Face Detector', viola_faces)
 
     video.release()
@@ -164,13 +188,10 @@ if __name__ == '__main__':
 
     for image in annot_data:
         frame = cv2.imread("data-faces-wider/" + image.filename)
-
         result = detector.detect_faces(frame)
         deep_faces, found_deep = find_face_DEEP(frame, result, True, image)
-
         faces = face_cascade.detectMultiScale(frame, scaleFactor=1.1, minNeighbors=5)
         detectFaceViola, found_viola = find_face_viola(frame, faces, True, image)
-
         for face in image.faces:
             cv2.rectangle(frame,
                           (face.x, face.y), (face.x + face.w, face.y + face.h),
@@ -188,35 +209,17 @@ if __name__ == '__main__':
         else:
             cv2.imwrite("output/drawn_" + image.filename, detectFaceViola)
 
-
-# cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-# detector = MTCNN()
-# while True:
-#     # Capture frame-by-frame
-#     __, frame = cap.read()
-#
-#     # Use MTCNN to detect faces
-#     result = detector.detect_faces(frame)
-#     if result != []:
-#         for person in result:
-#             bounding_box = person['box']
-#             # keypoints = person['keypoints']
-#
-#             cv2.rectangle(frame,
-#                           (bounding_box[0], bounding_box[1]),
-#                           (bounding_box[0] + bounding_box[2], bounding_box[1] + bounding_box[3]),
-#                           (0, 155, 255),
-#                           2)
-#
-#             # cv2.circle(frame, (keypoints['left_eye']), 2, (0, 155, 255), 2)
-#             # cv2.circle(frame, (keypoints['right_eye']), 2, (0, 155, 255), 2)
-#             # cv2.circle(frame, (keypoints['nose']), 2, (0, 155, 255), 2)
-#             # cv2.circle(frame, (keypoints['mouth_left']), 2, (0, 155, 255), 2)
-#             # cv2.circle(frame, (keypoints['mouth_right']), 2, (0, 155, 255), 2)
-#     # display resulting frame
-#     cv2.imshow('frame', frame)
-#     if cv2.waitKey(1) & 0xFF == ord('q'):
-#         break
-# # When everything's done, release capture
-# cap.release()
-# cv2.destroyAllWindows()
+    print(glob_deep_tp)
+    print(glob_deep_fp)
+    print(glob_deep_fn)
+    deep_precision = glob_deep_tp / (glob_deep_tp + glob_deep_fp)
+    deep_recall = glob_deep_tp / (glob_deep_tp + glob_deep_fn)
+    print('MTCNN Precision:', deep_precision)
+    print('MTCNN Recall:', deep_recall)
+    print(glob_viola_tp)
+    print(glob_viola_fp)
+    print(glob_viola_fn)
+    viola_precision = glob_viola_tp / (glob_viola_tp + glob_viola_fp)
+    viola_recall = glob_viola_tp / (glob_viola_tp + glob_viola_fn)
+    print('Viola Precision:', viola_precision)
+    print('Viola Recall:', viola_recall)
